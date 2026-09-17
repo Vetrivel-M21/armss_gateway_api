@@ -1,0 +1,4 @@
+require_once __DIR__ . '/gateway_auth.php';
+
+
+add this At the very top of your login.php:
