@@ -19,6 +19,12 @@ func NewHandler(cfg *config.Config) *Handler {
 }
 
 func (h *Handler) Manifest(c *gin.Context) {
+	platform := c.Query("platform")
+	if platform == "android" || platform == "mobile" {
+		h.MobileManifest(c)
+		return
+	}
+
 	if h.cfg.UpdateVersion == "" || h.cfg.UpdateURL == "" {
 		shared.SendSuccess(c, http.StatusOK, gin.H{"available": false})
 		return
@@ -42,3 +48,29 @@ func (h *Handler) Download(c *gin.Context) {
 	}
 	c.FileAttachment(h.cfg.UpdateFile, "ARMSS_Gateway_Setup.exe")
 }
+
+func (h *Handler) MobileManifest(c *gin.Context) {
+	if h.cfg.MobileUpdateVersion == "" || h.cfg.MobileUpdateURL == "" {
+		shared.SendSuccess(c, http.StatusOK, gin.H{"available": false})
+		return
+	}
+	shared.SendSuccess(c, http.StatusOK, gin.H{
+		"available": true,
+		"version":   h.cfg.MobileUpdateVersion,
+		"url":       h.cfg.MobileUpdateURL,
+		"sha256":    h.cfg.MobileUpdateSHA256,
+	})
+}
+
+func (h *Handler) MobileDownload(c *gin.Context) {
+	if h.cfg.MobileUpdateFile == "" {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	if _, err := os.Stat(h.cfg.MobileUpdateFile); err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	c.FileAttachment(h.cfg.MobileUpdateFile, "ARMSS_Gateway.apk")
+}
+

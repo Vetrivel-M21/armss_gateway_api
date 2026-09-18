@@ -78,6 +78,8 @@ func main() {
 		api.GET("/app/update", updateHandler.Manifest)
 		api.GET("/app/update-check", updateHandler.Manifest)
 		api.GET("/app/download", updateHandler.Download)
+		api.GET("/app/mobile-update", updateHandler.MobileManifest)
+		api.GET("/app/mobile-download", updateHandler.MobileDownload)
 
 		// Installer OTP & verification gate — the ARMSS Gateway Windows installer
 		// calls these during setup. Shared-secret protected.

@@ -31,6 +31,10 @@ type Config struct {
 	UpdateURL           string
 	UpdateSHA256        string
 	UpdateFile          string
+	MobileUpdateVersion string
+	MobileUpdateURL     string
+	MobileUpdateSHA256  string
+	MobileUpdateFile    string
 }
 
 func LoadConfig() (*Config, error) {
@@ -60,6 +64,10 @@ func LoadConfig() (*Config, error) {
 		UpdateURL:           getEnv("APP_UPDATE_URL", ""),
 		UpdateSHA256:        getEnv("APP_UPDATE_SHA256", ""),
 		UpdateFile:          getEnv("APP_UPDATE_FILE", ""),
+		MobileUpdateVersion: getEnv("MOBILE_UPDATE_VERSION", ""),
+		MobileUpdateURL:     getEnv("MOBILE_UPDATE_URL", ""),
+		MobileUpdateSHA256:  getEnv("MOBILE_UPDATE_SHA256", ""),
+		MobileUpdateFile:    getEnv("MOBILE_UPDATE_FILE", ""),
 	}
 
 	// Secrets must never have a hardcoded fallback in source — fail fast instead.
