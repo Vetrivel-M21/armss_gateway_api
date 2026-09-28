@@ -50,8 +50,12 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	user, err := h.service.Login(req.Identifier, req.Password)
+	user, err := h.service.Login(req.Identifier, req.Password, req.DeviceID, req.MachineFingerprint)
 	if err != nil {
+		if errors.Is(err, ErrDeviceMismatch) {
+			shared.SendForbidden(c, "DEVICE_LOCKED", err.Error())
+			return
+		}
 		shared.SendUnauthorized(c, "invalid credentials or inactive account")
 		return
 	}

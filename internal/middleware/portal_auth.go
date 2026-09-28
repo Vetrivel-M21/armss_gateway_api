@@ -3,6 +3,8 @@ package middleware
 import (
 	"fmt"
 
+	"armss-gateway/backend/internal/database"
+	"armss-gateway/backend/internal/models"
 	"armss-gateway/backend/internal/shared"
 
 	"github.com/gin-gonic/gin"
@@ -16,8 +18,7 @@ type PortalClaims struct {
 }
 
 // RequirePortalToken gates routes that need a logged-in portal user (e.g.
-// GET /me). Distinct from mis_desktop's local ledger login and from the
-// device-token system on the Trust backend — this is its own JWT.
+// GET /me). Enforces single active session per user account.
 func RequirePortalToken(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := c.GetHeader("X-Portal-Token")
@@ -39,6 +40,16 @@ func RequirePortalToken(jwtSecret string) gin.HandlerFunc {
 			shared.SendUnauthorized(c, "invalid or expired portal token")
 			c.Abort()
 			return
+		}
+
+		// Enforce single active session: reject if another device or session has logged in since
+		var activeToken string
+		if err := database.DB.Model(&models.PortalUser{}).Select("active_session_token").Where("id = ?", claims.UserID).Scan(&activeToken).Error; err == nil {
+			if activeToken != "" && activeToken != tokenString {
+				shared.SendUnauthorized(c, "Session expired or active on another device. Only one active session is allowed.")
+				c.Abort()
+				return
+			}
 		}
 
 		c.Set("portal_user_id", claims.UserID)

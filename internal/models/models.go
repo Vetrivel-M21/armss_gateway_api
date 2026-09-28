@@ -18,10 +18,13 @@ type PortalUser struct {
 	FullName   string    `gorm:"size:150;not null" json:"full_name"`
 	Department string    `gorm:"size:150;not null;default:''" json:"department"`
 	Branch     string    `gorm:"size:150;not null;default:''" json:"branch"`
-	Role       string    `gorm:"size:50;not null;default:'user'" json:"role"`
-	IsActive   bool      `gorm:"default:false;not null" json:"is_active"`
-	CreatedAt  time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt  time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	Role               string     `gorm:"size:50;not null;default:'user'" json:"role"`
+	BoundDeviceID      string     `gorm:"size:64;not null;default:''" json:"bound_device_id"`
+	ActiveSessionToken string     `gorm:"size:512;not null;default:''" json:"-"`
+	LastLoginAt        *time.Time `json:"last_login_at,omitempty"`
+	IsActive           bool       `gorm:"default:false;not null" json:"is_active"`
+	CreatedAt          time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt          time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 type PortalLink struct {

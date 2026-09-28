@@ -102,11 +102,34 @@ func (s *Service) ListUsers() ([]dto.AdminUserResponse, error) {
 			Department:      u.Department,
 			Branch:          u.Branch,
 			Role:            role,
+			BoundDeviceID:   u.BoundDeviceID,
+			LastLoginAt:     u.LastLoginAt,
 			IsActive:        u.IsActive,
 			GrantedLinkKeys: keysByUser[u.ID],
 		}
 	}
 	return result, nil
+}
+
+// ReleaseDeviceLock releases the 1-to-1 device lock and invalidates active sessions
+// for a specific user, permitting them to bind a new device.
+func (s *Service) ReleaseDeviceLock(userID uint) error {
+	now := time.Now()
+	err := database.DB.Model(&models.PortalUser{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"bound_device_id":      "",
+		"active_session_token": "",
+		"updated_at":           now,
+	}).Error
+	if err == nil {
+		_ = database.DB.Create(&models.AuditLog{
+			EventType: "DEVICE_LOCK_RELEASED",
+			Actor:     "admin",
+			UserID:    &userID,
+			Metadata:  fmt.Sprintf("Device lock released for user ID %d", userID),
+			CreatedAt: now,
+		}).Error
+	}
+	return err
 }
 
 // SetRole changes a user's role ('admin' or 'user').
@@ -237,6 +260,64 @@ func (s *Service) SetInstallerPassword(newPassword string, actor string) error {
 		EventType: "INSTALLER_PASSWORD_UPDATED",
 		Actor:     actor,
 		Metadata:  "Central installation password updated by admin",
+		CreatedAt: now,
+	}).Error
+
+	return nil
+}
+
+// GetInstallerAdminEmail reads the dynamic installer admin email from system_settings,
+// falling back to defaultEmail from configuration.
+func (s *Service) GetInstallerAdminEmail(defaultEmail string) (string, error) {
+	var setting models.SystemSetting
+	if err := database.DB.Where("`key` = ?", "installer_admin_email").First(&setting).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return defaultEmail, nil
+		}
+		return "", err
+	}
+	val := strings.TrimSpace(setting.Value)
+	if val == "" {
+		return defaultEmail, nil
+	}
+	return val, nil
+}
+
+// SetInstallerAdminEmail updates or inserts the dynamic installer admin email in system_settings
+// and records an audit log entry.
+func (s *Service) SetInstallerAdminEmail(newEmail string, actor string) error {
+	now := time.Now()
+	cleanEmail := strings.TrimSpace(newEmail)
+
+	var setting models.SystemSetting
+	err := database.DB.Where("`key` = ?", "installer_admin_email").First(&setting).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		setting = models.SystemSetting{
+			Key:       "installer_admin_email",
+			Value:     cleanEmail,
+			UpdatedAt: now,
+		}
+		if err := database.DB.Create(&setting).Error; err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	} else {
+		if err := database.DB.Model(&models.SystemSetting{}).Where("`key` = ?", "installer_admin_email").Updates(map[string]interface{}{
+			"value":      cleanEmail,
+			"updated_at": now,
+		}).Error; err != nil {
+			return err
+		}
+	}
+
+	if actor == "" {
+		actor = "admin"
+	}
+	_ = database.DB.Create(&models.AuditLog{
+		EventType: "INSTALLER_EMAIL_UPDATED",
+		Actor:     actor,
+		Metadata:  fmt.Sprintf("Installer OTP recipient email updated to %s by %s", cleanEmail, actor),
 		CreatedAt: now,
 	}).Error
 

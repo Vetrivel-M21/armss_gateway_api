@@ -140,6 +140,20 @@ func (h *Handler) SetRole(c *gin.Context) {
 	shared.SendSuccess(c, http.StatusOK, gin.H{"saved": true})
 }
 
+func (h *Handler) ReleaseDeviceLock(c *gin.Context) {
+	userID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		shared.SendBadRequest(c, "INVALID_REQUEST", "invalid user id")
+		return
+	}
+
+	if err := h.service.ReleaseDeviceLock(uint(userID)); err != nil {
+		shared.SendInternalError(c, "unable to release device lock: "+err.Error())
+		return
+	}
+	shared.SendSuccess(c, http.StatusOK, gin.H{"released": true})
+}
+
 func (h *Handler) RevealPassword(c *gin.Context) {
 	userID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
@@ -242,6 +256,44 @@ func (h *Handler) SetInstallerPassword(c *gin.Context) {
 		return
 	}
 	shared.SendSuccess(c, http.StatusOK, gin.H{"saved": true, "message": "Installer password updated successfully"})
+}
+
+func (h *Handler) GetInstallerAdminEmail(c *gin.Context) {
+	fallback := ""
+	if h.cfg != nil {
+		fallback = h.cfg.InstallerAdminEmail
+	}
+	email, err := h.service.GetInstallerAdminEmail(fallback)
+	if err != nil {
+		shared.SendInternalError(c, "unable to load installer admin email")
+		return
+	}
+	shared.SendSuccess(c, http.StatusOK, dto.InstallerAdminEmailResponse{Email: email})
+}
+
+func (h *Handler) SetInstallerAdminEmail(c *gin.Context) {
+	var req dto.SetInstallerAdminEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Email) == "" {
+		shared.SendBadRequest(c, "INVALID_REQUEST", "email is required")
+		return
+	}
+
+	cleanEmail := strings.TrimSpace(req.Email)
+	if !strings.Contains(cleanEmail, "@") || !strings.Contains(cleanEmail, ".") {
+		shared.SendBadRequest(c, "INVALID_REQUEST", "please provide a valid email address")
+		return
+	}
+
+	actor := c.GetString("portal_admin_email")
+	if actor == "" {
+		actor = "admin"
+	}
+
+	if err := h.service.SetInstallerAdminEmail(cleanEmail, actor); err != nil {
+		shared.SendInternalError(c, "unable to update installer admin email")
+		return
+	}
+	shared.SendSuccess(c, http.StatusOK, gin.H{"saved": true, "email": cleanEmail, "message": "Installer admin email updated successfully"})
 }
 
 func (h *Handler) GetTokenRestriction(c *gin.Context) {

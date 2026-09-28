@@ -17,8 +17,10 @@ type RegisterResponse struct {
 // app's single login field tries a local ledger username first, then falls
 // back to this endpoint with whatever was typed.
 type LoginRequest struct {
-	Identifier string `json:"identifier" binding:"required"`
-	Password   string `json:"password" binding:"required"`
+	Identifier         string `json:"identifier" binding:"required"`
+	Password           string `json:"password" binding:"required"`
+	DeviceID           string `json:"device_id"`
+	MachineFingerprint string `json:"machine_fingerprint"`
 }
 
 type LoginResponse struct {

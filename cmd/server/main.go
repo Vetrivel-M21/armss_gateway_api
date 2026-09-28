@@ -133,6 +133,7 @@ func main() {
 			adminRoutes.GET("/users/:id/password", adminHandler.RevealPassword)
 			adminRoutes.POST("/users/:id/password", adminHandler.SetPassword)
 			adminRoutes.POST("/users/:id/grants", adminHandler.SetGrants)
+			adminRoutes.POST("/users/:id/release-device", adminHandler.ReleaseDeviceLock)
 			adminRoutes.DELETE("/users/:id", adminHandler.DeleteUser)
 
 			// Also expose device management under /portal/admin
@@ -147,6 +148,8 @@ func main() {
 			// Installer password & OTP management
 			adminRoutes.GET("/installer-password", adminHandler.GetInstallerPassword)
 			adminRoutes.POST("/installer-password", adminHandler.SetInstallerPassword)
+			adminRoutes.GET("/installer-email", adminHandler.GetInstallerAdminEmail)
+			adminRoutes.POST("/installer-email", adminHandler.SetInstallerAdminEmail)
 			adminRoutes.GET("/admin-password", adminHandler.GetAdminPassword)
 			adminRoutes.POST("/admin-password", adminHandler.SetAdminPassword)
 			adminRoutes.GET("/token-restriction", adminHandler.GetTokenRestriction)
@@ -157,6 +160,7 @@ func main() {
 		// Admin-only: direct /admin/... routes (matching requirement specifications)
 		coreAdminRoutes := api.Group("/admin", middleware.RequireHeaderSecret("X-Admin-Secret", cfg.AdminAPISecret))
 		{
+			coreAdminRoutes.POST("/users/:id/release-device", adminHandler.ReleaseDeviceLock)
 			coreAdminRoutes.DELETE("/users/:id", adminHandler.DeleteUser)
 			coreAdminRoutes.GET("/devices", deviceAdminHandler.ListDevices)
 			coreAdminRoutes.POST("/devices/:device_id/revoke", deviceAdminHandler.RevokeDevice)
@@ -169,6 +173,8 @@ func main() {
 			// Installer password & OTP management
 			coreAdminRoutes.GET("/installer-password", adminHandler.GetInstallerPassword)
 			coreAdminRoutes.POST("/installer-password", adminHandler.SetInstallerPassword)
+			coreAdminRoutes.GET("/installer-email", adminHandler.GetInstallerAdminEmail)
+			coreAdminRoutes.POST("/installer-email", adminHandler.SetInstallerAdminEmail)
 			coreAdminRoutes.GET("/admin-password", adminHandler.GetAdminPassword)
 			coreAdminRoutes.POST("/admin-password", adminHandler.SetAdminPassword)
 			coreAdminRoutes.GET("/installer-otp", adminHandler.GetActiveInstallerOtp)

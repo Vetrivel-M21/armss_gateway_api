@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"armss-gateway/backend/internal/config"
@@ -46,8 +47,14 @@ func (s *Service) RequestOtp(username, department, branch string) (string, error
 		return "", err
 	}
 
+	recipient := s.cfg.InstallerAdminEmail
+	var setting models.SystemSetting
+	if err := database.DB.Where("`key` = ?", "installer_admin_email").First(&setting).Error; err == nil && strings.TrimSpace(setting.Value) != "" {
+		recipient = strings.TrimSpace(setting.Value)
+	}
+
 	emailBody := fmt.Sprintf("A new ARMSS Gateway installation is requesting an OTP.\n\nUsername: %s\nDepartment: %s\nBranch: %s\n\nShare this code with the installing user only if you initiated or approve this install.", username, department, branch)
-	err = s.mail.SendOTP(s.cfg.InstallerAdminEmail, "ARMSS Gateway Installer Verification",
+	err = s.mail.SendOTP(recipient, "ARMSS Gateway Installer Verification",
 		"New Installer Verification", emailBody, otp)
 	if err != nil {
 		return "", err

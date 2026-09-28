@@ -1,15 +1,19 @@
 package dto
 
+import "time"
+
 type AdminUserResponse struct {
-	ID              uint     `json:"id"`
-	Username        string   `json:"username"`
-	Email           string   `json:"email"`
-	FullName        string   `json:"full_name"`
-	Department      string   `json:"department"`
-	Branch          string   `json:"branch"`
-	Role            string   `json:"role"`
-	IsActive        bool     `json:"is_active"`
-	GrantedLinkKeys []string `json:"granted_link_keys"`
+	ID              uint       `json:"id"`
+	Username        string     `json:"username"`
+	Email           string     `json:"email"`
+	FullName        string     `json:"full_name"`
+	Department      string     `json:"department"`
+	Branch          string     `json:"branch"`
+	Role            string     `json:"role"`
+	BoundDeviceID   string     `json:"bound_device_id"`
+	LastLoginAt     *time.Time `json:"last_login_at,omitempty"`
+	IsActive        bool       `json:"is_active"`
+	GrantedLinkKeys []string   `json:"granted_link_keys"`
 }
 
 type SetRoleRequest struct {
@@ -38,6 +42,14 @@ type InstallerPasswordResponse struct {
 
 type SetInstallerPasswordRequest struct {
 	Password string `json:"password" binding:"required"`
+}
+
+type InstallerAdminEmailResponse struct {
+	Email string `json:"email"`
+}
+
+type SetInstallerAdminEmailRequest struct {
+	Email string `json:"email" binding:"required"`
 }
 
 type AdminPasswordResponse struct {

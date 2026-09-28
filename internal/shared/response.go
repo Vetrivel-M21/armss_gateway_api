@@ -37,6 +37,10 @@ func SendUnauthorized(c *gin.Context, message string) {
 	SendError(c, http.StatusUnauthorized, "UNAUTHORIZED", message)
 }
 
+func SendForbidden(c *gin.Context, code string, message string) {
+	SendError(c, http.StatusForbidden, code, message)
+}
+
 func SendInternalError(c *gin.Context, message string) {
 	SendError(c, http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", message)
 }

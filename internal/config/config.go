@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -23,6 +24,10 @@ type Config struct {
 	SMTPUsername        string
 	SMTPPassword        string
 	SMTPFromAddress     string
+	BirdAPIKey          string
+	BirdAPIURL          string
+	BirdFromEmail       string
+	BirdFromName        string
 	InstallerAdminEmail string
 	InstallerAPISecret  string
 	InstallerPassword   string
@@ -56,6 +61,10 @@ func LoadConfig() (*Config, error) {
 		SMTPUsername:        getEnv("SMTP_USERNAME", ""),
 		SMTPPassword:        getEnv("SMTP_PASSWORD", ""),
 		SMTPFromAddress:     getEnv("SMTP_FROM_ADDRESS", "noreply@arminfo.in"),
+		BirdAPIKey:          getEnv("BIRD_API_KEY", ""),
+		BirdAPIURL:          getEnv("BIRD_API_URL", "https://eu1.platform.bird.com/v1/email/messages"),
+		BirdFromEmail:       getEnv("BIRD_FROM_EMAIL", "noreply@arminfo.in"),
+		BirdFromName:        getEnv("BIRD_FROM_NAME", "ARMSS Gateway"),
 		InstallerAdminEmail: getEnv("INSTALLER_ADMIN_EMAIL", ""),
 		InstallerAPISecret:  getEnv("INSTALLER_API_SECRET", ""),
 		InstallerPassword:   getEnv("INSTALLER_PASSWORD", "Armss@Installer2026"),
@@ -68,6 +77,14 @@ func LoadConfig() (*Config, error) {
 		MobileUpdateURL:     getEnv("MOBILE_UPDATE_URL", ""),
 		MobileUpdateSHA256:  getEnv("MOBILE_UPDATE_SHA256", ""),
 		MobileUpdateFile:    getEnv("MOBILE_UPDATE_FILE", ""),
+	}
+
+	// Auto-detect Bird API Key from SMTP_PASSWORD if starts with "bk_"
+	if cfg.BirdAPIKey == "" && strings.HasPrefix(cfg.SMTPPassword, "bk_") {
+		cfg.BirdAPIKey = cfg.SMTPPassword
+	}
+	if cfg.BirdFromEmail == "" {
+		cfg.BirdFromEmail = cfg.SMTPFromAddress
 	}
 
 	// Secrets must never have a hardcoded fallback in source — fail fast instead.

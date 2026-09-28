@@ -163,6 +163,10 @@ func (s *Service) RegisterDevice(userID uint, deviceID, fingerprint string) (str
 			}
 		}
 
+		if userID > 0 {
+			_ = tx.Model(&models.PortalUser{}).Where("id = ?", userID).Update("bound_device_id", deviceID).Error
+		}
+
 		// Revoke previous tokens for this device so only one active token exists
 		var latestToken models.DeviceToken
 		nextVersion := 1

@@ -24,6 +24,7 @@ const tokenTTL = 12 * time.Hour
 var ErrUsernameTaken = errors.New("username already registered")
 var ErrEmailTaken = errors.New("email already registered")
 var ErrInvalidCredentials = errors.New("invalid credentials or inactive account")
+var ErrDeviceMismatch = errors.New("this account is already locked to another device. Only one device and one active session is allowed per account. Please contact an administrator to release the device lock")
 
 type Service struct {
 	cfg  *config.Config
@@ -96,9 +97,10 @@ func (s *Service) ensureAdminUser() (*models.PortalUser, error) {
 }
 
 // Login matches identifier against either username or email — the app's
+// Login matches identifier against either username or email — the app's
 // single login field tries a local ledger username first, then falls back
 // to this with whatever was typed.
-func (s *Service) Login(identifier, password string) (*models.PortalUser, error) {
+func (s *Service) Login(identifier, password, deviceID, machineFingerprint string) (*models.PortalUser, error) {
 	trimmedIdentifier := strings.ToLower(strings.TrimSpace(identifier))
 	adminEmail := strings.ToLower(strings.TrimSpace(s.cfg.InstallerAdminEmail))
 	if adminEmail == "" {
@@ -139,6 +141,30 @@ func (s *Service) Login(identifier, password string) (*models.PortalUser, error)
 	if !user.IsActive || user.Password != password {
 		return nil, ErrInvalidCredentials
 	}
+
+	// 1-to-1 Account-Device Locking enforcement:
+	// Once an account logs in on one device, it is locked to that device.
+	// Login on any other device is rejected.
+	cleanDeviceID := strings.TrimSpace(deviceID)
+	if cleanDeviceID != "" {
+		boundID := strings.TrimSpace(user.BoundDeviceID)
+		if boundID != "" && boundID != cleanDeviceID {
+			return nil, ErrDeviceMismatch
+		}
+		if boundID == "" {
+			user.BoundDeviceID = cleanDeviceID
+			_ = database.DB.Model(&models.PortalUser{}).Where("id = ?", user.ID).Update("bound_device_id", cleanDeviceID).Error
+		}
+
+		// Ensure device record exists or is associated with this user
+		var dev models.Device
+		if err := database.DB.Where("id = ?", cleanDeviceID).First(&dev).Error; err == nil {
+			if dev.UserID != user.ID {
+				_ = database.DB.Model(&dev).Update("user_id", user.ID).Error
+			}
+		}
+	}
+
 	return &user, nil
 }
 
@@ -260,7 +286,21 @@ func (s *Service) IssueToken(user *models.PortalUser) (string, error) {
 		"iat":     time.Now().Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(s.cfg.JWTSecret))
+	tokenStr, err := token.SignedString([]byte(s.cfg.JWTSecret))
+	if err != nil {
+		return "", err
+	}
+
+	// Single active session: record token as active session token so previous sessions are invalidated
+	now := time.Now()
+	_ = database.DB.Model(&models.PortalUser{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
+		"active_session_token": tokenStr,
+		"last_login_at":        now,
+	}).Error
+	user.ActiveSessionToken = tokenStr
+	user.LastLoginAt = &now
+
+	return tokenStr, nil
 }
 
 // RequestPasswordReset silently no-ops for an unknown email — the handler
