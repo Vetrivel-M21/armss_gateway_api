@@ -154,17 +154,21 @@ func (s *Service) RegisterDevice(userID uint, deviceID, fingerprint string) (str
 		} else if err != nil {
 			return err
 		} else {
-			device.UserID = userID
-			device.MachineFingerprint = fingerprint
-			device.LastOtpVerifiedAt = now
+			if userID > 0 {
+				device.UserID = userID
+			}
+			if fingerprint != "" {
+				device.MachineFingerprint = fingerprint
+			}
+			// Preserve existing LastOtpVerifiedAt so auto-updates or re-registrations
+			// do NOT reset the 30-day monthly OTP countdown!
+			if device.LastOtpVerifiedAt.IsZero() {
+				device.LastOtpVerifiedAt = now
+			}
 			device.UpdatedAt = now
 			if err := tx.Save(&device).Error; err != nil {
 				return err
 			}
-		}
-
-		if userID > 0 {
-			_ = tx.Model(&models.PortalUser{}).Where("id = ?", userID).Update("bound_device_id", deviceID).Error
 		}
 
 		// Revoke previous tokens for this device so only one active token exists

@@ -145,8 +145,10 @@ func (s *Service) Login(identifier, password, deviceID, machineFingerprint strin
 	// 1-to-1 Account-Device Locking enforcement:
 	// Once an account logs in on one device, it is locked to that device.
 	// Login on any other device is rejected.
+	// System Administrator accounts are exempt from device locking and can log in from any device.
+	isAdmin := user.Role == "admin" || strings.EqualFold(user.Username, "admin")
 	cleanDeviceID := strings.TrimSpace(deviceID)
-	if cleanDeviceID != "" {
+	if !isAdmin && cleanDeviceID != "" {
 		boundID := strings.TrimSpace(user.BoundDeviceID)
 		if boundID != "" && boundID != cleanDeviceID {
 			return nil, ErrDeviceMismatch
