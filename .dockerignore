@@ -1,0 +1,10 @@
+.git
+.github
+*.exe
+*.apk
+*.zip
+*.sql
+server_gateway
+uploads/*
+!uploads/.gitkeep
+.env

@@ -1,0 +1,22 @@
+services:
+  gateway-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: armss_gateway_backend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-2092}:2092"
+    env_file:
+      - .env
+    volumes:
+      - ./uploads:/app/uploads
+      - /opt/armss:/opt/armss
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - gateway-net
+
+networks:
+  gateway-net:
+    driver: bridge
