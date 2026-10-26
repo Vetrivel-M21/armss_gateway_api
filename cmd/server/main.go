@@ -139,6 +139,7 @@ func main() {
 			// Also expose device management under /portal/admin
 			adminRoutes.GET("/devices", deviceAdminHandler.ListDevices)
 			adminRoutes.POST("/devices/:device_id/revoke", deviceAdminHandler.RevokeDevice)
+			adminRoutes.POST("/devices/:device_id/unlock", deviceAdminHandler.UnlockDevice)
 			adminRoutes.GET("/requests", deviceAdminHandler.ListRequests)
 			adminRoutes.POST("/requests/:request_id/approve", deviceAdminHandler.ApproveRequest)
 			adminRoutes.POST("/requests/:request_id/reject", deviceAdminHandler.RejectRequest)
@@ -164,6 +165,7 @@ func main() {
 			coreAdminRoutes.DELETE("/users/:id", adminHandler.DeleteUser)
 			coreAdminRoutes.GET("/devices", deviceAdminHandler.ListDevices)
 			coreAdminRoutes.POST("/devices/:device_id/revoke", deviceAdminHandler.RevokeDevice)
+			coreAdminRoutes.POST("/devices/:device_id/unlock", deviceAdminHandler.UnlockDevice)
 			coreAdminRoutes.GET("/requests", deviceAdminHandler.ListRequests)
 			coreAdminRoutes.POST("/requests/:request_id/approve", deviceAdminHandler.ApproveRequest)
 			coreAdminRoutes.POST("/requests/:request_id/reject", deviceAdminHandler.RejectRequest)

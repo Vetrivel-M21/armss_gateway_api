@@ -102,6 +102,64 @@ func (s *Service) RevokeDevice(deviceID string, actor string) error {
 	})
 }
 
+// UnlockDevice reactivates a revoked device, generates a new active token, and refreshes OTP status.
+func (s *Service) UnlockDevice(deviceID string, actor string) error {
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		var device models.Device
+		if err := tx.Where("id = ?", deviceID).First(&device).Error; err != nil {
+			return ErrDeviceNotFound
+		}
+
+		rawToken, err := devicetoken.GenerateRawToken()
+		if err != nil {
+			return fmt.Errorf("generating token: %w", err)
+		}
+		tokenHash := devicetoken.HashToken(rawToken)
+
+		// Determine next token version
+		var latestToken models.DeviceToken
+		nextVersion := 1
+		if err := tx.Where("device_id = ?", deviceID).Order("token_version DESC").First(&latestToken).Error; err == nil {
+			nextVersion = latestToken.TokenVersion + 1
+		}
+
+		// Revoke previous tokens
+		_ = tx.Model(&models.DeviceToken{}).
+			Where("device_id = ? AND status = ?", deviceID, models.TokenStatusActive).
+			Update("status", models.TokenStatusRevoked).Error
+
+		now := time.Now()
+		newToken := models.DeviceToken{
+			UserID:       device.UserID,
+			DeviceID:     deviceID,
+			TokenVersion: nextVersion,
+			Status:       models.TokenStatusActive,
+			TokenHash:    tokenHash,
+			IssuedAt:     now,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		}
+		if err := tx.Create(&newToken).Error; err != nil {
+			return err
+		}
+
+		// Refresh OTP verification timestamp so device is completely unlocked
+		_ = tx.Model(&models.Device{}).
+			Where("id = ?", deviceID).
+			Updates(map[string]interface{}{
+				"last_otp_verified_at": now,
+				"updated_at":           now,
+			}).Error
+
+		s.logAuditTx(tx, "device_unlocked", &device.UserID, &deviceID, actor, map[string]interface{}{
+			"token_version": nextVersion,
+			"status":        models.TokenStatusActive,
+		})
+
+		return nil
+	})
+}
+
 func (s *Service) ListRequests(statusFilter string) ([]dto.AdminActivationRequestResponse, error) {
 	var requests []models.ActivationRequest
 	query := database.DB.Preload("User").Order("requested_at DESC")

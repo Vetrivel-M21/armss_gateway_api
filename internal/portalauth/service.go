@@ -153,12 +153,26 @@ func (s *Service) Login(identifier, password, deviceID, machineFingerprint strin
 		if boundID != "" && boundID != cleanDeviceID {
 			return nil, ErrDeviceMismatch
 		}
+
+		// Also ensure this device is not currently locked to another non-admin user
+		var otherUser models.PortalUser
+		if err := database.DB.Where("bound_device_id = ? AND id != ?", cleanDeviceID, user.ID).First(&otherUser).Error; err == nil {
+			otherIsAdmin := otherUser.Role == "admin" || strings.EqualFold(otherUser.Username, "admin")
+			if !otherIsAdmin {
+				displayName := otherUser.FullName
+				if displayName == "" {
+					displayName = otherUser.Username
+				}
+				return nil, fmt.Errorf("this device is currently locked to another account (%s, @%s). Please contact an administrator to release the device lock in the Admin Portal", displayName, otherUser.Username)
+			}
+		}
+
 		if boundID == "" {
 			user.BoundDeviceID = cleanDeviceID
 			_ = database.DB.Model(&models.PortalUser{}).Where("id = ?", user.ID).Update("bound_device_id", cleanDeviceID).Error
 		}
 
-		// Ensure device record exists or is associated with this user
+		// Ensure device record exists and is associated with this user
 		var dev models.Device
 		if err := database.DB.Where("id = ?", cleanDeviceID).First(&dev).Error; err == nil {
 			if dev.UserID != user.ID {

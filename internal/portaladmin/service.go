@@ -115,17 +115,34 @@ func (s *Service) ListUsers() ([]dto.AdminUserResponse, error) {
 // for a specific user, permitting them to bind a new device.
 func (s *Service) ReleaseDeviceLock(userID uint) error {
 	now := time.Now()
+	var user models.PortalUser
+	if err := database.DB.Where("id = ?", userID).First(&user).Error; err != nil {
+		return err
+	}
+
+	boundDeviceID := strings.TrimSpace(user.BoundDeviceID)
+
 	err := database.DB.Model(&models.PortalUser{}).Where("id = ?", userID).Updates(map[string]interface{}{
 		"bound_device_id":      "",
 		"active_session_token": "",
 		"updated_at":           now,
 	}).Error
 	if err == nil {
+		// Also disassociate the device record if bound to this user
+		if boundDeviceID != "" {
+			_ = database.DB.Model(&models.Device{}).Where("id = ? AND user_id = ?", boundDeviceID, userID).
+				Updates(map[string]interface{}{
+					"user_id":    0,
+					"updated_at": now,
+				}).Error
+		}
+
 		_ = database.DB.Create(&models.AuditLog{
 			EventType: "DEVICE_LOCK_RELEASED",
 			Actor:     "admin",
 			UserID:    &userID,
-			Metadata:  fmt.Sprintf("Device lock released for user ID %d", userID),
+			DeviceID:  &boundDeviceID,
+			Metadata:  fmt.Sprintf("Device lock released for user ID %d (%s) on device %s", userID, user.Username, boundDeviceID),
 			CreatedAt: now,
 		}).Error
 	}

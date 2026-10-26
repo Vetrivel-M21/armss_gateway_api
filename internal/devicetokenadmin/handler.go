@@ -47,6 +47,26 @@ func (h *Handler) RevokeDevice(c *gin.Context) {
 	shared.SendSuccess(c, http.StatusOK, gin.H{"revoked": true})
 }
 
+func (h *Handler) UnlockDevice(c *gin.Context) {
+	deviceID := c.Param("device_id")
+	if deviceID == "" {
+		shared.SendBadRequest(c, "INVALID_REQUEST", "device_id is required")
+		return
+	}
+
+	actor := "admin"
+	if customActor := c.GetHeader("X-Admin-Actor"); customActor != "" {
+		actor = customActor
+	}
+
+	if err := h.service.UnlockDevice(deviceID, actor); err != nil {
+		shared.SendInternalError(c, "unable to unlock device: "+err.Error())
+		return
+	}
+
+	shared.SendSuccess(c, http.StatusOK, gin.H{"unlocked": true})
+}
+
 func (h *Handler) ListRequests(c *gin.Context) {
 	status := c.Query("status")
 	requests, err := h.service.ListRequests(status)
