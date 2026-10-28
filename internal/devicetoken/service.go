@@ -22,7 +22,9 @@ import (
 const otpTTL = 15 * time.Minute
 const monthlyReverifyDuration = 30 * 24 * time.Hour
 
-var ErrInvalidCredentials = errors.New("invalid credentials or inactive account")
+var ErrInvalidCredentials = errors.New("invalid credentials")
+var ErrAccountInactive = errors.New("this account is inactive. Please contact an administrator to activate your account")
+var ErrInvalidPassword = errors.New("incorrect password. Please verify your credentials")
 var ErrDeviceNotFound = errors.New("device not found")
 var ErrUserNotFound = errors.New("user not found")
 
@@ -103,10 +105,13 @@ func (s *Service) VerifyPassword(identifier, password string) (*models.PortalUse
 	if identifier != "" {
 		var user models.PortalUser
 		if err := database.DB.Where("username = ? OR email = ?", identifier, identifier).First(&user).Error; err != nil {
-			return nil, ErrInvalidCredentials
+			return nil, ErrUserNotFound
 		}
-		if !user.IsActive || user.Password != password {
-			return nil, ErrInvalidCredentials
+		if !user.IsActive {
+			return nil, ErrAccountInactive
+		}
+		if user.Password != password {
+			return nil, ErrInvalidPassword
 		}
 		return &user, nil
 	}

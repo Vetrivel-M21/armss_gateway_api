@@ -52,11 +52,19 @@ func (h *Handler) Login(c *gin.Context) {
 
 	user, err := h.service.Login(req.Identifier, req.Password, req.DeviceID, req.MachineFingerprint)
 	if err != nil {
-		if errors.Is(err, ErrDeviceMismatch) {
+		if errors.Is(err, ErrDeviceMismatch) || errors.Is(err, ErrDeviceLockedToOther) {
 			shared.SendForbidden(c, "DEVICE_LOCKED", err.Error())
 			return
 		}
-		shared.SendUnauthorized(c, "invalid credentials or inactive account")
+		if errors.Is(err, ErrAccountInactive) {
+			shared.SendForbidden(c, "ACCOUNT_INACTIVE", err.Error())
+			return
+		}
+		if errors.Is(err, ErrInvalidPassword) || errors.Is(err, ErrUserNotFound) || errors.Is(err, ErrInvalidCredentials) {
+			shared.SendUnauthorized(c, err.Error())
+			return
+		}
+		shared.SendUnauthorized(c, err.Error())
 		return
 	}
 

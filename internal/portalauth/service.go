@@ -23,8 +23,12 @@ const tokenTTL = 12 * time.Hour
 
 var ErrUsernameTaken = errors.New("username already registered")
 var ErrEmailTaken = errors.New("email already registered")
-var ErrInvalidCredentials = errors.New("invalid credentials or inactive account")
+var ErrUserNotFound = errors.New("no account found matching this username or email")
+var ErrAccountInactive = errors.New("this account is inactive. Please contact an administrator to activate your account")
+var ErrInvalidPassword = errors.New("incorrect password. Please verify your credentials")
+var ErrInvalidCredentials = errors.New("invalid credentials")
 var ErrDeviceMismatch = errors.New("this account is already locked to another device. Only one device and one active session is allowed per account. Please contact an administrator to release the device lock")
+var ErrDeviceLockedToOther = errors.New("this device is currently locked to another account. Please contact an administrator to release the device lock in the Admin Portal")
 
 type Service struct {
 	cfg  *config.Config
@@ -136,10 +140,13 @@ func (s *Service) Login(identifier, password, deviceID, machineFingerprint strin
 
 	var user models.PortalUser
 	if err := database.DB.Where("(LOWER(username) = ? OR LOWER(email) = ?)", trimmedIdentifier, trimmedIdentifier).First(&user).Error; err != nil {
-		return nil, ErrInvalidCredentials
+		return nil, ErrUserNotFound
 	}
-	if !user.IsActive || user.Password != password {
-		return nil, ErrInvalidCredentials
+	if !user.IsActive {
+		return nil, ErrAccountInactive
+	}
+	if user.Password != password {
+		return nil, ErrInvalidPassword
 	}
 
 	// 1-to-1 Account-Device Locking enforcement:
@@ -163,7 +170,7 @@ func (s *Service) Login(identifier, password, deviceID, machineFingerprint strin
 				if displayName == "" {
 					displayName = otherUser.Username
 				}
-				return nil, fmt.Errorf("this device is currently locked to another account (%s, @%s). Please contact an administrator to release the device lock in the Admin Portal", displayName, otherUser.Username)
+				return nil, fmt.Errorf("%w: this device is currently locked to another account (%s, @%s). Please contact an administrator to release the device lock in the Admin Portal", ErrDeviceLockedToOther, displayName, otherUser.Username)
 			}
 		}
 
