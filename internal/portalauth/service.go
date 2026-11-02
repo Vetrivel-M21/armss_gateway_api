@@ -161,7 +161,9 @@ func (s *Service) Login(identifier, password, deviceID, machineFingerprint strin
 			return nil, ErrDeviceMismatch
 		}
 
-		// Also ensure this device is not currently locked to another non-admin user
+		// Device locking is relaxed to allow shared office workstations / multi-user devices
+		// (Prevents "device is currently locked to another account" when multiple users share an authorized machine)
+		/*
 		var otherUser models.PortalUser
 		if err := database.DB.Where("bound_device_id = ? AND id != ?", cleanDeviceID, user.ID).First(&otherUser).Error; err == nil {
 			otherIsAdmin := otherUser.Role == "admin" || strings.EqualFold(otherUser.Username, "admin")
@@ -173,6 +175,7 @@ func (s *Service) Login(identifier, password, deviceID, machineFingerprint strin
 				return nil, fmt.Errorf("%w: this device is currently locked to another account (%s, @%s). Please contact an administrator to release the device lock in the Admin Portal", ErrDeviceLockedToOther, displayName, otherUser.Username)
 			}
 		}
+		*/
 
 		if boundID == "" {
 			user.BoundDeviceID = cleanDeviceID
