@@ -314,7 +314,7 @@ func (s *Service) CheckActivation(deviceID string) (string, string, string, erro
 	}
 }
 
-// SendMonthlyOtp sends a 6-digit OTP code to the registered email address of the device's user.
+// SendMonthlyOtp sends a 6-digit OTP code to the configured admin email address for 30-day device re-verification.
 func (s *Service) SendMonthlyOtp(deviceID string) (string, string, error) {
 	var device models.Device
 	if err := database.DB.Where("id = ?", deviceID).First(&device).Error; err != nil {
@@ -323,7 +323,7 @@ func (s *Service) SendMonthlyOtp(deviceID string) (string, string, error) {
 
 	var user models.PortalUser
 	if err := database.DB.Where("id = ?", device.UserID).First(&user).Error; err != nil {
-		return "", "", ErrUserNotFound
+		user = models.PortalUser{FullName: "Staff User"}
 	}
 
 	requestID, err := randomHex(16)
@@ -336,25 +336,57 @@ func (s *Service) SendMonthlyOtp(deviceID string) (string, string, error) {
 	}
 
 	record := models.InstallerOtpRequest{
-		ID:        requestID,
-		OtpCode:   otp,
-		ExpiresAt: time.Now().Add(otpTTL),
-		Verified:  false,
-		CreatedAt: time.Now(),
+		ID:         requestID,
+		Username:   user.Username,
+		Department: user.Department,
+		Branch:     user.Branch,
+		OtpCode:    otp,
+		ExpiresAt:  time.Now().Add(otpTTL),
+		Verified:   false,
+		CreatedAt:  time.Now(),
 	}
 	if err := database.DB.Create(&record).Error; err != nil {
 		return "", "", err
 	}
 
-	err = s.mail.SendOTP(user.Email, "ARMSS Gateway Monthly Security Verification",
-		"Monthly Security Verification",
-		fmt.Sprintf("Hello %s, please enter this OTP in your ARMSS Gateway desktop application to complete your routine 30-day security check.", user.FullName),
+	// Target the configured administrator email address
+	recipient := strings.TrimSpace(s.cfg.InstallerAdminEmail)
+	if recipient == "" {
+		recipient = strings.TrimSpace(user.Email)
+	}
+	if recipient == "" {
+		recipient = s.cfg.SMTPFromAddress
+	}
+
+	workstation := device.MachineFingerprint
+	if workstation == "" {
+		workstation = device.ID
+	}
+
+	userContext := ""
+	if user.FullName != "" {
+		userContext = fmt.Sprintf(" (User: %s", user.FullName)
+		if user.Department != "" || user.Branch != "" {
+			userContext += fmt.Sprintf(" | %s, %s", user.Department, user.Branch)
+		}
+		userContext += ")"
+	}
+
+	heading := "Monthly Security Verification Code"
+	message := fmt.Sprintf(
+		"A routine 30-day security re-verification was requested on workstation %s%s. Please provide this 6-digit OTP code to the staff member to unlock the ARMSS Gateway desktop application.",
+		workstation, userContext,
+	)
+
+	err = s.mail.SendOTP(recipient, "ARMSS Gateway Monthly Security Verification",
+		heading,
+		message,
 		otp)
 	if err != nil {
 		return "", "", fmt.Errorf("sending email: %w", err)
 	}
 
-	masked := maskEmail(user.Email)
+	masked := maskEmail(recipient)
 	return requestID, masked, nil
 }
 
