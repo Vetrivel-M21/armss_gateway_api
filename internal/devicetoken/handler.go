@@ -172,7 +172,7 @@ func (h *Handler) RequestMonthlyOtp(c *gin.Context) {
 	})
 }
 
-// VerifyMonthlyOtp verifies the monthly OTP code and unblocks access.
+// VerifyMonthlyOtp verifies the monthly OTP code.
 func (h *Handler) VerifyMonthlyOtp(c *gin.Context) {
 	var req dto.MonthlyReverifyVerifyOtpRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -186,7 +186,54 @@ func (h *Handler) VerifyMonthlyOtp(c *gin.Context) {
 		return
 	}
 
+	msg := "Verification code accepted. Please submit request for administrator approval."
+	if !verified {
+		msg = "Invalid or expired verification code."
+	}
+
 	shared.SendSuccess(c, http.StatusOK, dto.MonthlyReverifyVerifyOtpResponse{
 		Verified: verified,
+		Message:  msg,
 	})
+}
+
+// RequestMonthlyApproval transitions verified OTP into pending admin approval.
+func (h *Handler) RequestMonthlyApproval(c *gin.Context) {
+	var req dto.MonthlyReverifyRequestApprovalRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		shared.SendBadRequest(c, "INVALID_REQUEST", "device_id and request_id are required")
+		return
+	}
+
+	success, err := h.service.RequestMonthlyApproval(req.DeviceID, req.RequestID)
+	if err != nil {
+		shared.SendInternalError(c, "unable to submit approval request: "+err.Error())
+		return
+	}
+
+	shared.SendSuccess(c, http.StatusOK, dto.MonthlyReverifyRequestApprovalResponse{
+		Success: success,
+		Status:  "pending_approval",
+		Message: "Approval request submitted to administrator.",
+	})
+}
+
+// CheckMonthlyStatus returns the current monthly verification status for a device.
+func (h *Handler) CheckMonthlyStatus(c *gin.Context) {
+	deviceID := c.Query("device_id")
+	if deviceID == "" {
+		deviceID = c.GetHeader("X-Device-Id")
+	}
+	if deviceID == "" {
+		shared.SendBadRequest(c, "INVALID_REQUEST", "device_id query parameter or header is required")
+		return
+	}
+
+	res, err := h.service.CheckMonthlyStatus(deviceID)
+	if err != nil {
+		shared.SendInternalError(c, "unable to check monthly verification status: "+err.Error())
+		return
+	}
+
+	shared.SendSuccess(c, http.StatusOK, res)
 }

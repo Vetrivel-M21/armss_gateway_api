@@ -167,6 +167,43 @@ func (ActivationRequest) TableName() string {
 	return "activation_requests"
 }
 
+type MonthlyVerificationStatus string
+
+const (
+	MonthlyStatusPendingOtp      MonthlyVerificationStatus = "pending_otp"
+	MonthlyStatusPendingApproval MonthlyVerificationStatus = "pending_approval"
+	MonthlyStatusApproved        MonthlyVerificationStatus = "approved"
+	MonthlyStatusRejected        MonthlyVerificationStatus = "rejected"
+)
+
+// MonthlyVerificationRequest tracks the 30-day security re-verification flow:
+// 1. User requests OTP -> sent to user's registered email
+// 2. User verifies OTP -> marks otp_verified = true
+// 3. User requests admin approval -> status = pending_approval
+// 4. Admin reviews & approves -> status = approved, refreshes device.last_otp_verified_at
+type MonthlyVerificationRequest struct {
+	ID              string                    `gorm:"primaryKey;size:36" json:"id"`
+	UserID          uint                      `gorm:"not null;index" json:"user_id"`
+	User            *PortalUser               `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
+	DeviceID        string                    `gorm:"size:64;not null;index" json:"device_id"`
+	Device          *Device                   `gorm:"foreignKey:DeviceID;constraint:OnDelete:CASCADE" json:"device,omitempty"`
+	OtpCode         string                    `gorm:"size:6;not null" json:"-"`
+	OtpVerified     bool                      `gorm:"default:false;not null" json:"otp_verified"`
+	OtpVerifiedAt   *time.Time                `json:"otp_verified_at,omitempty"`
+	Status          MonthlyVerificationStatus `gorm:"type:enum('pending_otp','pending_approval','approved','rejected');default:'pending_otp';not null;index" json:"status"`
+	ApprovedBy      *uint                     `gorm:"index" json:"approved_by,omitempty"`
+	Approver        *PortalUser               `gorm:"foreignKey:ApprovedBy;constraint:OnDelete:SET NULL" json:"approver,omitempty"`
+	ApprovedAt      *time.Time                `json:"approved_at,omitempty"`
+	RejectionReason string                    `gorm:"size:255" json:"rejection_reason,omitempty"`
+	RequestedAt     time.Time                 `gorm:"not null" json:"requested_at"`
+	CreatedAt       time.Time                 `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt       time.Time                 `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (MonthlyVerificationRequest) TableName() string {
+	return "monthly_verification_requests"
+}
+
 // AuditLog captures security and lifecycle events for tokens, devices, and activations.
 type AuditLog struct {
 	ID        uint        `gorm:"primaryKey;autoIncrement" json:"id"`

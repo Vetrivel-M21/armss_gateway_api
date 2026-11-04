@@ -165,3 +165,70 @@ func (h *Handler) ListAuditLogs(c *gin.Context) {
 
 	shared.SendSuccess(c, http.StatusOK, logs)
 }
+
+func (h *Handler) ListMonthlyRequests(c *gin.Context) {
+	status := c.Query("status")
+	requests, err := h.service.ListMonthlyRequests(status)
+	if err != nil {
+		shared.SendInternalError(c, "unable to list monthly verification requests: "+err.Error())
+		return
+	}
+	shared.SendSuccess(c, http.StatusOK, requests)
+}
+
+func (h *Handler) ApproveMonthlyRequest(c *gin.Context) {
+	requestID := c.Param("request_id")
+	if requestID == "" {
+		requestID = c.Param("id")
+	}
+	if requestID == "" {
+		shared.SendBadRequest(c, "INVALID_REQUEST", "request_id is required")
+		return
+	}
+
+	actor := "admin"
+	if customActor := c.GetHeader("X-Admin-Actor"); customActor != "" {
+		actor = customActor
+	}
+
+	var adminID *uint
+	if idStr := c.GetHeader("X-Admin-User-Id"); idStr != "" {
+		if id, err := strconv.ParseUint(idStr, 10, 64); err == nil {
+			uid := uint(id)
+			adminID = &uid
+		}
+	}
+
+	if err := h.service.ApproveMonthlyRequest(requestID, actor, adminID); err != nil {
+		shared.SendInternalError(c, "unable to approve monthly request: "+err.Error())
+		return
+	}
+
+	shared.SendSuccess(c, http.StatusOK, gin.H{"approved": true})
+}
+
+func (h *Handler) RejectMonthlyRequest(c *gin.Context) {
+	requestID := c.Param("request_id")
+	if requestID == "" {
+		requestID = c.Param("id")
+	}
+	if requestID == "" {
+		shared.SendBadRequest(c, "INVALID_REQUEST", "request_id is required")
+		return
+	}
+
+	var req dto.AdminRejectRequest
+	_ = c.ShouldBindJSON(&req)
+
+	actor := "admin"
+	if customActor := c.GetHeader("X-Admin-Actor"); customActor != "" {
+		actor = customActor
+	}
+
+	if err := h.service.RejectMonthlyRequest(requestID, actor, req.Reason); err != nil {
+		shared.SendInternalError(c, "unable to reject monthly request: "+err.Error())
+		return
+	}
+
+	shared.SendSuccess(c, http.StatusOK, gin.H{"rejected": true})
+}

@@ -72,7 +72,50 @@ type MonthlyReverifyVerifyOtpRequest struct {
 }
 
 type MonthlyReverifyVerifyOtpResponse struct {
-	Verified bool `json:"verified"`
+	Verified bool   `json:"verified"`
+	Message  string `json:"message,omitempty"`
+}
+
+type MonthlyReverifyRequestApprovalRequest struct {
+	DeviceID  string `json:"device_id" binding:"required"`
+	RequestID string `json:"request_id" binding:"required"`
+}
+
+type MonthlyReverifyRequestApprovalResponse struct {
+	Success bool   `json:"success"`
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
+}
+
+type MonthlyStatusResponse struct {
+	Status             string     `json:"status"` // pending_otp | pending_approval | approved | rejected | none
+	IsReverifyRequired bool       `json:"is_reverify_required"`
+	Reason             string     `json:"reason,omitempty"`
+	RequestID          string     `json:"request_id,omitempty"`
+	RequestedAt        *time.Time `json:"requested_at,omitempty"`
+	ApprovedAt         *time.Time `json:"approved_at,omitempty"`
+	RejectionReason    string     `json:"rejection_reason,omitempty"`
+}
+
+type AdminMonthlyRequestResponse struct {
+	ID                 string     `json:"id"`
+	UserID             uint       `json:"user_id"`
+	Username           string     `json:"username"`
+	FullName           string     `json:"full_name"`
+	Email              string     `json:"email"`
+	Department         string     `json:"department"`
+	Branch             string     `json:"branch"`
+	DeviceID           string     `json:"device_id"`
+	MachineFingerprint string     `json:"machine_fingerprint"`
+	OtpVerified        bool       `json:"otp_verified"`
+	OtpVerifiedAt      *time.Time `json:"otp_verified_at,omitempty"`
+	Status             string     `json:"status"`
+	ApprovedBy         *uint      `json:"approved_by,omitempty"`
+	ApproverName       string     `json:"approver_name,omitempty"`
+	ApprovedAt         *time.Time `json:"approved_at,omitempty"`
+	RejectionReason    string     `json:"rejection_reason,omitempty"`
+	RequestedAt        time.Time  `json:"requested_at"`
+	CreatedAt          time.Time  `json:"created_at"`
 }
 
 type AdminDeviceResponse struct {

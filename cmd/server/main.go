@@ -104,6 +104,8 @@ func main() {
 			authRoutes.GET("/check-activation", deviceTokenHandler.CheckActivation)
 			authRoutes.POST("/monthly-reverify/request-otp", deviceTokenHandler.RequestMonthlyOtp)
 			authRoutes.POST("/monthly-reverify/verify-otp", deviceTokenHandler.VerifyMonthlyOtp)
+			authRoutes.POST("/monthly-reverify/request-approval", deviceTokenHandler.RequestMonthlyApproval)
+			authRoutes.GET("/monthly-reverify/check-status", deviceTokenHandler.CheckMonthlyStatus)
 			authRoutes.POST("/monthly-reverify", deviceTokenHandler.VerifyMonthlyOtp)
 		}
 
@@ -143,6 +145,9 @@ func main() {
 			adminRoutes.GET("/requests", deviceAdminHandler.ListRequests)
 			adminRoutes.POST("/requests/:request_id/approve", deviceAdminHandler.ApproveRequest)
 			adminRoutes.POST("/requests/:request_id/reject", deviceAdminHandler.RejectRequest)
+			adminRoutes.GET("/monthly-requests", deviceAdminHandler.ListMonthlyRequests)
+			adminRoutes.POST("/monthly-requests/:request_id/approve", deviceAdminHandler.ApproveMonthlyRequest)
+			adminRoutes.POST("/monthly-requests/:request_id/reject", deviceAdminHandler.RejectMonthlyRequest)
 			adminRoutes.GET("/audit-logs", deviceAdminHandler.ListAuditLogs)
 
 			// Installer password management
@@ -169,6 +174,9 @@ func main() {
 			coreAdminRoutes.GET("/requests", deviceAdminHandler.ListRequests)
 			coreAdminRoutes.POST("/requests/:request_id/approve", deviceAdminHandler.ApproveRequest)
 			coreAdminRoutes.POST("/requests/:request_id/reject", deviceAdminHandler.RejectRequest)
+			coreAdminRoutes.GET("/monthly-requests", deviceAdminHandler.ListMonthlyRequests)
+			coreAdminRoutes.POST("/monthly-requests/:request_id/approve", deviceAdminHandler.ApproveMonthlyRequest)
+			coreAdminRoutes.POST("/monthly-requests/:request_id/reject", deviceAdminHandler.RejectMonthlyRequest)
 			coreAdminRoutes.GET("/audit-logs", deviceAdminHandler.ListAuditLogs)
 
 			// Installer password management

@@ -300,6 +300,130 @@ func (s *Service) RejectRequest(requestID string, adminActor string, adminID *ui
 	})
 }
 
+func (s *Service) ListMonthlyRequests(statusFilter string) ([]dto.AdminMonthlyRequestResponse, error) {
+	var requests []models.MonthlyVerificationRequest
+	query := database.DB.Preload("User").Preload("Device").Preload("Approver").Order("created_at DESC")
+	if statusFilter != "" {
+		query = query.Where("status = ?", statusFilter)
+	}
+
+	if err := query.Find(&requests).Error; err != nil {
+		return nil, err
+	}
+
+	result := make([]dto.AdminMonthlyRequestResponse, len(requests))
+	for i, r := range requests {
+		username := ""
+		email := ""
+		fullName := ""
+		dept := ""
+		branch := ""
+		if r.User != nil {
+			username = r.User.Username
+			email = r.User.Email
+			fullName = r.User.FullName
+			dept = r.User.Department
+			branch = r.User.Branch
+		}
+
+		machine := ""
+		if r.Device != nil {
+			machine = r.Device.MachineFingerprint
+		}
+
+		approverName := ""
+		if r.Approver != nil {
+			approverName = r.Approver.FullName
+			if approverName == "" {
+				approverName = r.Approver.Username
+			}
+		}
+
+		result[i] = dto.AdminMonthlyRequestResponse{
+			ID:                 r.ID,
+			UserID:             r.UserID,
+			Username:           username,
+			FullName:           fullName,
+			Email:              email,
+			Department:         dept,
+			Branch:             branch,
+			DeviceID:           r.DeviceID,
+			MachineFingerprint: machine,
+			OtpVerified:        r.OtpVerified,
+			OtpVerifiedAt:      r.OtpVerifiedAt,
+			Status:             string(r.Status),
+			ApprovedBy:         r.ApprovedBy,
+			ApproverName:       approverName,
+			ApprovedAt:         r.ApprovedAt,
+			RejectionReason:    r.RejectionReason,
+			RequestedAt:        r.RequestedAt,
+			CreatedAt:          r.CreatedAt,
+		}
+	}
+
+	return result, nil
+}
+
+func (s *Service) ApproveMonthlyRequest(requestID string, adminActor string, adminID *uint) error {
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		var req models.MonthlyVerificationRequest
+		if err := tx.Where("id = ?", requestID).First(&req).Error; err != nil {
+			return errors.New("monthly verification request not found")
+		}
+
+		now := time.Now()
+		req.Status = models.MonthlyStatusApproved
+		req.ApprovedBy = adminID
+		req.ApprovedAt = &now
+		req.UpdatedAt = now
+		if err := tx.Save(&req).Error; err != nil {
+			return err
+		}
+
+		// Unlock device access by refreshing last_otp_verified_at to now
+		if err := tx.Model(&models.Device{}).
+			Where("id = ?", req.DeviceID).
+			Updates(map[string]interface{}{
+				"last_otp_verified_at": now,
+				"updated_at":           now,
+			}).Error; err != nil {
+			return err
+		}
+
+		s.logAuditTx(tx, "monthly_reverification_approved", &req.UserID, &req.DeviceID, adminActor, map[string]interface{}{
+			"approved_at": now,
+			"request_id":  req.ID,
+		})
+
+		return nil
+	})
+}
+
+func (s *Service) RejectMonthlyRequest(requestID string, adminActor string, reason string) error {
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		var req models.MonthlyVerificationRequest
+		if err := tx.Where("id = ?", requestID).First(&req).Error; err != nil {
+			return errors.New("monthly verification request not found")
+		}
+
+		now := time.Now()
+		req.Status = models.MonthlyStatusRejected
+		req.RejectionReason = reason
+		req.UpdatedAt = now
+		if err := tx.Save(&req).Error; err != nil {
+			return err
+		}
+
+		s.logAuditTx(tx, "monthly_reverification_rejected", &req.UserID, &req.DeviceID, adminActor, map[string]interface{}{
+			"rejected_at": now,
+			"request_id":  req.ID,
+			"reason":      reason,
+		})
+
+		return nil
+	})
+}
+
 func (s *Service) ListAuditLogs(userID *uint, deviceID *string, limit int) ([]dto.AdminAuditLogResponse, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100

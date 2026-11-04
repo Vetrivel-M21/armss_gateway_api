@@ -242,6 +242,12 @@ func (s *Service) ValidateToken(deviceID, rawToken string) (bool, string, *model
 
 	// Check 30-day monthly OTP re-verification requirement
 	if time.Since(device.LastOtpVerifiedAt) > monthlyReverifyDuration {
+		var latestReq models.MonthlyVerificationRequest
+		if err := database.DB.Where("device_id = ?", deviceID).Order("created_at DESC").First(&latestReq).Error; err == nil {
+			if latestReq.Status == models.MonthlyStatusPendingApproval {
+				return false, "monthly_approval_pending", nil, nil
+			}
+		}
 		return false, "otp_reverification_required", nil, nil
 	}
 
@@ -314,7 +320,7 @@ func (s *Service) CheckActivation(deviceID string) (string, string, string, erro
 	}
 }
 
-// SendMonthlyOtp sends a 6-digit OTP code to the configured admin email address for 30-day device re-verification.
+// SendMonthlyOtp sends a 6-digit OTP code to the current user's email address for 30-day device re-verification.
 func (s *Service) SendMonthlyOtp(deviceID string) (string, string, error) {
 	var device models.Device
 	if err := database.DB.Where("id = ?", deviceID).First(&device).Error; err != nil {
@@ -335,24 +341,24 @@ func (s *Service) SendMonthlyOtp(deviceID string) (string, string, error) {
 		return "", "", err
 	}
 
-	record := models.InstallerOtpRequest{
-		ID:         requestID,
-		Username:   user.Username,
-		Department: user.Department,
-		Branch:     user.Branch,
-		OtpCode:    otp,
-		ExpiresAt:  time.Now().Add(otpTTL),
-		Verified:   false,
-		CreatedAt:  time.Now(),
+	record := models.MonthlyVerificationRequest{
+		ID:          requestID,
+		UserID:      device.UserID,
+		DeviceID:    deviceID,
+		OtpCode:     otp,
+		OtpVerified: false,
+		Status:      models.MonthlyStatusPendingOtp,
+		RequestedAt: time.Now(),
+		CreatedAt:   time.Now(),
 	}
 	if err := database.DB.Create(&record).Error; err != nil {
 		return "", "", err
 	}
 
-	// Target the configured administrator email address
-	recipient := strings.TrimSpace(s.cfg.InstallerAdminEmail)
+	// Target the current user's email address
+	recipient := strings.TrimSpace(user.Email)
 	if recipient == "" {
-		recipient = strings.TrimSpace(user.Email)
+		recipient = strings.TrimSpace(s.cfg.InstallerAdminEmail)
 	}
 	if recipient == "" {
 		recipient = s.cfg.SMTPFromAddress
@@ -363,19 +369,10 @@ func (s *Service) SendMonthlyOtp(deviceID string) (string, string, error) {
 		workstation = device.ID
 	}
 
-	userContext := ""
-	if user.FullName != "" {
-		userContext = fmt.Sprintf(" (User: %s", user.FullName)
-		if user.Department != "" || user.Branch != "" {
-			userContext += fmt.Sprintf(" | %s, %s", user.Department, user.Branch)
-		}
-		userContext += ")"
-	}
-
 	heading := "Monthly Security Verification Code"
 	message := fmt.Sprintf(
-		"A routine 30-day security re-verification was requested on workstation %s%s. Please provide this 6-digit OTP code to the staff member to unlock the ARMSS Gateway desktop application.",
-		workstation, userContext,
+		"Hello %s,\n\nA routine 30-day security re-verification is required on your workstation (%s). Please enter this 6-digit OTP code in the ARMSS Gateway desktop application to proceed with your verification request.",
+		user.FullName, workstation,
 	)
 
 	err = s.mail.SendOTP(recipient, "ARMSS Gateway Monthly Security Verification",
@@ -390,33 +387,115 @@ func (s *Service) SendMonthlyOtp(deviceID string) (string, string, error) {
 	return requestID, masked, nil
 }
 
-// VerifyMonthlyOtp validates the OTP code and refreshes last_otp_verified_at.
+// VerifyMonthlyOtp validates the OTP code entered by the user.
+// Access is NOT unlocked here — the user must request admin approval next.
 func (s *Service) VerifyMonthlyOtp(deviceID, requestID, otp string) (bool, error) {
 	var device models.Device
 	if err := database.DB.Where("id = ?", deviceID).First(&device).Error; err != nil {
 		return false, ErrDeviceNotFound
 	}
 
+	var req models.MonthlyVerificationRequest
+	if err := database.DB.Where("id = ? AND device_id = ?", requestID, deviceID).First(&req).Error; err != nil {
+		// Fallback check in InstallerOtpRequest for backward compatibility
+		return s.verifyLegacyMonthlyOtp(deviceID, requestID, otp)
+	}
+
+	if req.OtpCode != otp {
+		s.LogAudit("monthly_otp_verification_failed", &device.UserID, &deviceID, fmt.Sprintf("user:%d", device.UserID), map[string]interface{}{
+			"attempted_at": time.Now(),
+			"request_id":   requestID,
+		})
+		return false, nil
+	}
+
+	now := time.Now()
+	if err := database.DB.Model(&req).Updates(map[string]interface{}{
+		"otp_verified":    true,
+		"otp_verified_at": now,
+		"updated_at":      now,
+	}).Error; err != nil {
+		return false, err
+	}
+
+	s.LogAudit("monthly_otp_verification_success", &device.UserID, &deviceID, fmt.Sprintf("user:%d", device.UserID), map[string]interface{}{
+		"verified_at": now,
+		"request_id":  requestID,
+	})
+	return true, nil
+}
+
+// RequestMonthlyApproval transitions a verified OTP request to pending administrator approval.
+func (s *Service) RequestMonthlyApproval(deviceID, requestID string) (bool, error) {
+	var device models.Device
+	if err := database.DB.Where("id = ?", deviceID).First(&device).Error; err != nil {
+		return false, ErrDeviceNotFound
+	}
+
+	var req models.MonthlyVerificationRequest
+	if err := database.DB.Where("id = ? AND device_id = ?", requestID, deviceID).First(&req).Error; err != nil {
+		return false, errors.New("monthly verification request not found")
+	}
+
+	if !req.OtpVerified {
+		return false, errors.New("OTP must be verified before requesting administrator approval")
+	}
+
+	now := time.Now()
+	if err := database.DB.Model(&req).Updates(map[string]interface{}{
+		"status":     models.MonthlyStatusPendingApproval,
+		"updated_at": now,
+	}).Error; err != nil {
+		return false, err
+	}
+
+	s.LogAudit("monthly_approval_requested", &device.UserID, &deviceID, fmt.Sprintf("user:%d", device.UserID), map[string]interface{}{
+		"requested_at": now,
+		"request_id":   requestID,
+	})
+	return true, nil
+}
+
+// CheckMonthlyStatus returns the latest monthly verification state for a device.
+func (s *Service) CheckMonthlyStatus(deviceID string) (dto.MonthlyStatusResponse, error) {
+	var device models.Device
+	if err := database.DB.Where("id = ?", deviceID).First(&device).Error; err != nil {
+		return dto.MonthlyStatusResponse{Status: "none"}, ErrDeviceNotFound
+	}
+
+	isReverifyRequired := time.Since(device.LastOtpVerifiedAt) > monthlyReverifyDuration
+
+	var req models.MonthlyVerificationRequest
+	err := database.DB.Where("device_id = ?", deviceID).Order("created_at DESC").First(&req).Error
+	if err != nil {
+		return dto.MonthlyStatusResponse{
+			Status:             "none",
+			IsReverifyRequired: isReverifyRequired,
+		}, nil
+	}
+
+	return dto.MonthlyStatusResponse{
+		Status:             string(req.Status),
+		IsReverifyRequired: isReverifyRequired,
+		RequestID:          req.ID,
+		RequestedAt:        &req.RequestedAt,
+		ApprovedAt:         req.ApprovedAt,
+		RejectionReason:    req.RejectionReason,
+	}, nil
+}
+
+func (s *Service) verifyLegacyMonthlyOtp(deviceID, requestID, otp string) (bool, error) {
+	var device models.Device
+	if err := database.DB.Where("id = ?", deviceID).First(&device).Error; err != nil {
+		return false, ErrDeviceNotFound
+	}
 	result := database.DB.Model(&models.InstallerOtpRequest{}).
 		Where("id = ? AND otp_code = ? AND verified = ? AND expires_at > ?", requestID, otp, false, time.Now()).
 		Update("verified", true)
 	if result.Error != nil {
 		return false, result.Error
 	}
-
-	if result.RowsAffected == 1 {
-		now := time.Now()
-		database.DB.Model(&device).Update("last_otp_verified_at", now)
-		s.LogAudit("otp_reverification_success", &device.UserID, &deviceID, fmt.Sprintf("user:%d", device.UserID), map[string]interface{}{
-			"verified_at": now,
-		})
-		return true, nil
-	}
-
-	s.LogAudit("otp_reverification_failed", &device.UserID, &deviceID, fmt.Sprintf("user:%d", device.UserID), map[string]interface{}{
-		"attempted_at": time.Now(),
-	})
-	return false, nil
+	return result.RowsAffected == 1, nil
 }
 
 func (s *Service) LogAudit(eventType string, userID *uint, deviceID *string, actor string, metadata map[string]interface{}) {
