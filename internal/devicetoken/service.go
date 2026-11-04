@@ -13,6 +13,7 @@ import (
 
 	"armss-gateway/backend/internal/config"
 	"armss-gateway/backend/internal/database"
+	"armss-gateway/backend/internal/dto"
 	"armss-gateway/backend/internal/mail"
 	"armss-gateway/backend/internal/models"
 
