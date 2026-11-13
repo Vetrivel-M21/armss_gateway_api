@@ -342,6 +342,20 @@ func (s *Service) SendMonthlyOtp(deviceID string) (string, string, error) {
 		return "", "", err
 	}
 
+	// Throttle requests: ensure at least 45 seconds have passed since the last OTP request for this device
+	var lastReq models.MonthlyVerificationRequest
+	if err := database.DB.Where("device_id = ? AND status = ?", deviceID, models.MonthlyStatusPendingOtp).
+		Order("created_at DESC").First(&lastReq).Error; err == nil {
+		elapsed := time.Since(lastReq.CreatedAt)
+		if elapsed < 45*time.Second {
+			remaining := int((45*time.Second - elapsed).Seconds())
+			if remaining <= 0 {
+				remaining = 1
+			}
+			return "", "", fmt.Errorf("please wait %d seconds before requesting another verification code", remaining)
+		}
+	}
+
 	// Clean up any previous unverified pending_otp requests for this device to prevent duplicate active records
 	_ = database.DB.Where("device_id = ? AND status = ?", deviceID, models.MonthlyStatusPendingOtp).
 		Delete(&models.MonthlyVerificationRequest{}).Error
