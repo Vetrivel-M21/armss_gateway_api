@@ -342,6 +342,10 @@ func (s *Service) SendMonthlyOtp(deviceID string) (string, string, error) {
 		return "", "", err
 	}
 
+	// Clean up any previous unverified pending_otp requests for this device to prevent duplicate active records
+	_ = database.DB.Where("device_id = ? AND status = ?", deviceID, models.MonthlyStatusPendingOtp).
+		Delete(&models.MonthlyVerificationRequest{}).Error
+
 	record := models.MonthlyVerificationRequest{
 		ID:          requestID,
 		UserID:      device.UserID,

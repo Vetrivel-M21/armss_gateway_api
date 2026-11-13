@@ -305,6 +305,9 @@ func (s *Service) ListMonthlyRequests(statusFilter string) ([]dto.AdminMonthlyRe
 	query := database.DB.Preload("User").Preload("Device").Preload("Approver").Order("created_at DESC")
 	if statusFilter != "" {
 		query = query.Where("status = ?", statusFilter)
+	} else {
+		// Only list actionable requests; do not surface in-flight pending_otp before user verifies email OTP
+		query = query.Where("status != ?", models.MonthlyStatusPendingOtp)
 	}
 
 	if err := query.Find(&requests).Error; err != nil {
@@ -369,6 +372,13 @@ func (s *Service) ApproveMonthlyRequest(requestID string, adminActor string, adm
 		var req models.MonthlyVerificationRequest
 		if err := tx.Where("id = ?", requestID).First(&req).Error; err != nil {
 			return errors.New("monthly verification request not found")
+		}
+
+		if !req.OtpVerified {
+			return errors.New("cannot approve monthly verification: email OTP has not been verified by user")
+		}
+		if req.Status != models.MonthlyStatusPendingApproval {
+			return errors.New("monthly verification request is not pending administrator approval")
 		}
 
 		now := time.Now()
